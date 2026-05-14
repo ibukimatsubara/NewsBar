@@ -28,6 +28,22 @@ struct ContentView: View {
         HStack {
             Text("NewsBar").font(.headline)
             Spacer()
+            Button(action: { store.toggleFocus() }) {
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(store.focusMode ? Color.orange : Color.green)
+                        .frame(width: 8, height: 8)
+                    Text(store.focusMode ? "集中モード ON" : "集中モード OFF")
+                        .font(.caption)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(
+                    RoundedRectangle(cornerRadius: 999)
+                        .fill(Color.secondary.opacity(0.15))
+                )
+            }
+            .buttonStyle(.plain)
             Button("更新") {
                 Task { await store.refreshAll() }
             }

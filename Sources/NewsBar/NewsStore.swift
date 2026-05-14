@@ -12,6 +12,8 @@ final class NewsStore: ObservableObject {
     @Published var refreshIntervalMinutes: Int = 10
     /// 何時間以内の記事を表示するか（今から遡るローリング窓）
     @Published var maxAgeHours: Int = 72
+    /// 集中モード（メニューバーのティッカーを非表示にしてアイコンだけにする）
+    @Published var focusMode: Bool = false
 
     var onUpdate: (() -> Void)?
 
@@ -26,6 +28,7 @@ final class NewsStore: ObservableObject {
         $tickerWidth.dropFirst().sink { [weak self] _ in self?.savePrefs(); self?.onUpdate?() }.store(in: &cancellables)
         $refreshIntervalMinutes.dropFirst().sink { [weak self] _ in self?.savePrefs(); self?.restartRefreshTimer() }.store(in: &cancellables)
         $maxAgeHours.dropFirst().sink { [weak self] _ in self?.savePrefs(); self?.onUpdate?() }.store(in: &cancellables)
+        $focusMode.dropFirst().sink { [weak self] _ in self?.savePrefs(); self?.onUpdate?() }.store(in: &cancellables)
     }
 
     func start() {
@@ -73,6 +76,10 @@ final class NewsStore: ObservableObject {
         feeds[i].visible.toggle()
         save()
         onUpdate?()
+    }
+
+    func toggleFocus() {
+        focusMode.toggle()
     }
 
     func move(from: IndexSet, to: Int) {
@@ -181,6 +188,26 @@ final class NewsStore: ObservableObject {
         return (track, ranges)
     }
 
+    // MARK: - Icon
+
+    private static let newspaperSVG: String = """
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" \
+    stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="5" width="18" height="14" rx="1.5"/>
+      <line x1="7" y1="9"  x2="17" y2="9"/>
+      <line x1="7" y1="13" x2="17" y2="13"/>
+      <line x1="7" y1="17" x2="13" y2="17"/>
+    </svg>
+    """
+
+    static func newspaperIcon() -> NSImage? {
+        guard let data = newspaperSVG.data(using: .utf8),
+              let img = NSImage(data: data) else { return nil }
+        img.size = NSSize(width: 18, height: 18)
+        img.isTemplate = true
+        return img
+    }
+
     // MARK: - Persistence
 
     private func save() {
@@ -195,7 +222,8 @@ final class NewsStore: ObservableObject {
             "tickerStepInterval": tickerStepInterval,
             "tickerWidth": tickerWidth,
             "refreshIntervalMinutes": refreshIntervalMinutes,
-            "maxAgeHours": maxAgeHours
+            "maxAgeHours": maxAgeHours,
+            "focusMode": focusMode
         ]
         UserDefaults.standard.set(prefs, forKey: prefsKey)
     }
@@ -217,6 +245,7 @@ final class NewsStore: ObservableObject {
             if let r = prefs["refreshIntervalMinutes"] as? Int { refreshIntervalMinutes = min(max(r, 1), 120) }
             if let h = prefs["maxAgeHours"] as? Int { maxAgeHours = min(max(h, 1), 720) }
             else if let d = prefs["maxAgeDays"] as? Int { maxAgeHours = min(max(d * 24, 1), 720) }
+            if let f = prefs["focusMode"] as? Bool { focusMode = f }
         }
     }
 }
