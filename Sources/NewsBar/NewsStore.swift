@@ -139,14 +139,23 @@ final class NewsStore: ObservableObject {
                 cursor += s.size().width
                 continue
             }
+            let dateFormatter = DateFormatter()
+            dateFormatter.dateFormat = "MM/dd"
             for (j, item) in feed.items.enumerated() {
-                if j > 0 {
-                    let s = NSAttributedString(
-                        string: "   ／   ",
-                        attributes: [.font: mono, .foregroundColor: NSColor.tertiaryLabelColor]
+                let bullet = NSAttributedString(
+                    string: j == 0 ? "・" : "   ・",
+                    attributes: [.font: mono, .foregroundColor: NSColor.tertiaryLabelColor]
+                )
+                track.append(bullet); cursor += bullet.size().width
+
+                if let date = item.publishedAt {
+                    let d = NSAttributedString(
+                        string: "\(dateFormatter.string(from: date)) ",
+                        attributes: [.font: mono, .foregroundColor: NSColor.secondaryLabelColor]
                     )
-                    track.append(s); cursor += s.size().width
+                    track.append(d); cursor += d.size().width
                 }
+
                 let attrs: [NSAttributedString.Key: Any] = [
                     .font: mono,
                     .foregroundColor: NSColor.labelColor
