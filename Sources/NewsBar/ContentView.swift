@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import ServiceManagement
 
 struct ContentView: View {
     @EnvironmentObject var store: NewsStore
@@ -136,7 +137,9 @@ struct FeedRow: View {
                 Text("取得失敗: \(err)").font(.caption2).foregroundColor(.yellow).lineLimit(1)
             }
         } else {
-            Text("\(feed.items.count) 件" + (feed.lastFetched.map { " · " + Self.timeFmt.string(from: $0) } ?? ""))
+            let latest = feed.items.compactMap { $0.publishedAt }.max()
+            let latestStr = latest.map { " · 最新 " + Self.latestFmt.string(from: $0) } ?? ""
+            Text("\(feed.items.count) 件" + (feed.lastFetched.map { " · " + Self.timeFmt.string(from: $0) } ?? "") + latestStr)
                 .font(.caption2).foregroundColor(.secondary)
         }
     }
@@ -144,13 +147,44 @@ struct FeedRow: View {
     private static let timeFmt: DateFormatter = {
         let f = DateFormatter(); f.dateStyle = .none; f.timeStyle = .short; return f
     }()
+    private static let latestFmt: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "MM/dd HH:mm"; return f
+    }()
+}
+
+enum LoginItem {
+    static var isEnabled: Bool {
+        SMAppService.mainApp.status == .enabled
+    }
+    static func set(enabled: Bool) {
+        do {
+            if enabled {
+                if SMAppService.mainApp.status != .enabled {
+                    try SMAppService.mainApp.register()
+                }
+            } else {
+                if SMAppService.mainApp.status == .enabled {
+                    try SMAppService.mainApp.unregister()
+                }
+            }
+        } catch {
+            NSLog("LoginItem toggle failed: \(error)")
+        }
+    }
 }
 
 struct SettingsView: View {
     @EnvironmentObject var store: NewsStore
+    @State private var launchAtLogin: Bool = LoginItem.isEnabled
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            Toggle("ログイン時に自動起動", isOn: $launchAtLogin)
+                .toggleStyle(.checkbox)
+                .onChange(of: launchAtLogin) { newValue in
+                    LoginItem.set(enabled: newValue)
+                    launchAtLogin = LoginItem.isEnabled
+                }
             sliderRow(label: "バー幅",
                       value: Binding(get: { Double(store.tickerWidth) },
                                      set: { store.tickerWidth = Int($0) }),
@@ -166,6 +200,14 @@ struct SettingsView: View {
                                      set: { store.refreshIntervalMinutes = Int($0) }),
                       range: 1...60, step: 1,
                       format: { "\(Int($0))分" })
+            sliderRow(label: "表示期間",
+                      value: Binding(get: { Double(store.maxAgeHours) },
+                                     set: { store.maxAgeHours = Int($0) }),
+                      range: 1...240, step: 1,
+                      format: { h in
+                          let i = Int(h)
+                          return i < 48 ? "\(i)時間以内" : "\(i)時間 (\(i/24)日)"
+                      })
             Text("左クリック: 見出しをブラウザで開く  ／  右クリック（または Ctrl+クリック）: この設定を開閉")
                 .font(.caption2).foregroundColor(.secondary)
         }

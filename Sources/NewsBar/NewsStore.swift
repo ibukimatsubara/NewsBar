@@ -10,6 +10,8 @@ final class NewsStore: ObservableObject {
     @Published var tickerWidth: Int = 80
     /// 取得間隔（分）
     @Published var refreshIntervalMinutes: Int = 10
+    /// 何時間以内の記事を表示するか（今から遡るローリング窓）
+    @Published var maxAgeHours: Int = 72
 
     var onUpdate: (() -> Void)?
 
@@ -23,6 +25,7 @@ final class NewsStore: ObservableObject {
         $tickerStepInterval.dropFirst().sink { [weak self] _ in self?.savePrefs(); self?.onUpdate?() }.store(in: &cancellables)
         $tickerWidth.dropFirst().sink { [weak self] _ in self?.savePrefs(); self?.onUpdate?() }.store(in: &cancellables)
         $refreshIntervalMinutes.dropFirst().sink { [weak self] _ in self?.savePrefs(); self?.restartRefreshTimer() }.store(in: &cancellables)
+        $maxAgeHours.dropFirst().sink { [weak self] _ in self?.savePrefs(); self?.onUpdate?() }.store(in: &cancellables)
     }
 
     func start() {
@@ -130,7 +133,12 @@ final class NewsStore: ObservableObject {
             track.append(tag)
             cursor += tag.size().width
 
-            if feed.lastError != nil || feed.items.isEmpty {
+            let cutoff = Date().addingTimeInterval(-Double(maxAgeHours) * 3600)
+            let filtered = feed.items.filter { item in
+                guard let d = item.publishedAt else { return true }
+                return d >= cutoff
+            }
+            if feed.lastError != nil || filtered.isEmpty {
                 let s = NSAttributedString(
                     string: feed.lastError ?? "（記事なし）",
                     attributes: [.font: mono, .foregroundColor: NSColor.systemYellow]
@@ -141,7 +149,7 @@ final class NewsStore: ObservableObject {
             }
             let dateFormatter = DateFormatter()
             dateFormatter.dateFormat = "MM/dd"
-            for (j, item) in feed.items.enumerated() {
+            for (j, item) in filtered.enumerated() {
                 let bullet = NSAttributedString(
                     string: j == 0 ? "・" : "   ・",
                     attributes: [.font: mono, .foregroundColor: NSColor.tertiaryLabelColor]
@@ -186,7 +194,8 @@ final class NewsStore: ObservableObject {
         let prefs: [String: Any] = [
             "tickerStepInterval": tickerStepInterval,
             "tickerWidth": tickerWidth,
-            "refreshIntervalMinutes": refreshIntervalMinutes
+            "refreshIntervalMinutes": refreshIntervalMinutes,
+            "maxAgeHours": maxAgeHours
         ]
         UserDefaults.standard.set(prefs, forKey: prefsKey)
     }
@@ -206,6 +215,8 @@ final class NewsStore: ObservableObject {
             if let s = prefs["tickerStepInterval"] as? TimeInterval { tickerStepInterval = min(max(s, 0.02), 0.30) }
             if let w = prefs["tickerWidth"] as? Int { tickerWidth = min(max(w, 20), 600) }
             if let r = prefs["refreshIntervalMinutes"] as? Int { refreshIntervalMinutes = min(max(r, 1), 120) }
+            if let h = prefs["maxAgeHours"] as? Int { maxAgeHours = min(max(h, 1), 720) }
+            else if let d = prefs["maxAgeDays"] as? Int { maxAgeHours = min(max(d * 24, 1), 720) }
         }
     }
 }
