@@ -80,6 +80,7 @@ final class NewsStore: ObservableObject {
 
     func toggleFocus() {
         focusMode.toggle()
+        onUpdate?()
     }
 
     func move(from: IndexSet, to: Int) {

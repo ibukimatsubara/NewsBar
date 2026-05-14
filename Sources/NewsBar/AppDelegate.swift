@@ -51,24 +51,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func refreshTitle() {
         guard let button = statusItem.button else { return }
         let nextMode: BarMode = (store.focusMode || store.visibleFeeds.isEmpty) ? .idle : .ticker
-
-        if currentMode != nextMode {
-            switch nextMode {
-            case .idle:   enterIdle(button: button)
-            case .ticker: enterTicker(button: button)
-            }
-            currentMode = nextMode
+        let from = currentMode
+        switch nextMode {
+        case .idle:   applyIdle(button: button, from: from)
+        case .ticker: applyTicker(button: button, from: from)
         }
-
-        if nextMode == .ticker {
-            updateTickerContent(button: button)
-        }
+        currentMode = nextMode
     }
 
     /// アイコンだけ表示し、クリックでポップオーバーを開くモード。
-    private func enterIdle(button: NSStatusBarButton) {
-        tickerView.stopAnimation()
-        tickerView.removeFromSuperview()
+    private func applyIdle(button: NSStatusBarButton, from: BarMode?) {
+        if from == .ticker {
+            tickerView.stopAnimation()
+            tickerView.removeFromSuperview()
+            tickerView.clickableRanges = []
+        }
         statusItem.length = NSStatusItem.variableLength
         button.attributedTitle = NSAttributedString()
         button.title = ""
@@ -78,8 +75,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         button.action = #selector(togglePopover)
     }
 
-    /// ティッカーをメニューバーに乗せるモード。クリックは TickerView で受ける。
-    private func enterTicker(button: NSStatusBarButton) {
+    /// ティッカーをメニューバーに乗せるモード。クリックは TickerView 側で受ける。
+    /// 毎回フル再適用する：target/action のリセット、strip/ranges の置換、寸法調整。
+    private func applyTicker(button: NSStatusBarButton, from: BarMode?) {
         button.attributedTitle = NSAttributedString()
         button.title = ""
         button.image = nil
@@ -93,20 +91,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if tickerView.superview !== button {
             button.addSubview(tickerView)
         }
-        tickerView.startAnimation()
-    }
-
-    private func updateTickerContent(button: NSStatusBarButton) {
-        let chW = Self.monoCellWidth
-        let width = CGFloat(store.tickerWidth) * chW + 8
-        if statusItem.length != width {
-            statusItem.length = width
-            tickerView.frame = NSRect(x: 0, y: 0, width: width, height: button.bounds.height)
-        }
         let (strip, ranges) = store.tickerStripWithRanges(font: Self.monoFont)
         tickerView.setAttributedString(strip)
         tickerView.clickableRanges = ranges
         tickerView.pixelsPerSecond = chW / max(store.tickerStepInterval, 0.001)
         tickerView.gapPixels = max(CGFloat(store.tickerWidth) * chW / 2, 60)
+        if from != .ticker {
+            tickerView.startAnimation()
+        }
     }
 }
