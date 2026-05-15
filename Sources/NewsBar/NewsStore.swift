@@ -19,8 +19,16 @@ final class NewsStore: ObservableObject {
 
     private let feedsKey = "NewsBar.feeds.v1"
     private let prefsKey = "NewsBar.prefs.v1"
+    /// フィードあたり保持する最大記事数。これ以上は古いものから捨てる。
+    private let maxItemsPerFeed = 30
     private var cancellables = Set<AnyCancellable>()
     private var refreshTimer: Timer?
+
+    private static let monthDayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "MM/dd"
+        return f
+    }()
 
     init() {
         load()
@@ -103,7 +111,9 @@ final class NewsStore: ObservableObject {
             let parsed = try await RSS.fetch(url: url)
             if let idx = feeds.firstIndex(where: { $0.url == url }) {
                 feeds[idx].feedTitle = parsed.feedTitle
-                feeds[idx].items = parsed.items
+                feeds[idx].items = Self.prune(parsed.items,
+                                              maxAgeHours: maxAgeHours,
+                                              cap: maxItemsPerFeed)
                 feeds[idx].lastError = nil
                 feeds[idx].lastFetched = Date()
             }
@@ -120,6 +130,19 @@ final class NewsStore: ObservableObject {
     // MARK: - Derived
 
     var visibleFeeds: [Feed] { feeds.filter { $0.visible } }
+
+    /// 期限切れ記事を捨て、新しい順に並べて上限件数で切る。
+    private static func prune(_ items: [NewsItem], maxAgeHours: Int, cap: Int) -> [NewsItem] {
+        let cutoff = Date().addingTimeInterval(-Double(maxAgeHours) * 3600)
+        let filtered = items.filter { item in
+            guard let d = item.publishedAt else { return true }
+            return d >= cutoff
+        }
+        let sorted = filtered.sorted { a, b in
+            (a.publishedAt ?? .distantPast) > (b.publishedAt ?? .distantPast)
+        }
+        return Array(sorted.prefix(cap))
+    }
 
     /// ティッカー帯を組み立てる。各記事の x 座標範囲とリンクを併せて返す。
     func tickerStripWithRanges(font mono: NSFont) -> (NSAttributedString, [(range: ClosedRange<CGFloat>, url: URL)]) {
@@ -155,8 +178,7 @@ final class NewsStore: ObservableObject {
                 cursor += s.size().width
                 continue
             }
-            let dateFormatter = DateFormatter()
-            dateFormatter.dateFormat = "MM/dd"
+            let dateFormatter = Self.monthDayFormatter
             for (j, item) in filtered.enumerated() {
                 let bullet = NSAttributedString(
                     string: j == 0 ? "・" : "   ・",
@@ -232,7 +254,12 @@ final class NewsStore: ObservableObject {
     private func load() {
         if let data = UserDefaults.standard.data(forKey: feedsKey),
            let arr = try? JSONDecoder().decode([Feed].self, from: data) {
-            feeds = arr
+            // 保存済みデータも起動時に剪定する（前回保存以降に古くなった記事を捨てる）。
+            feeds = arr.map { feed in
+                var f = feed
+                f.items = Self.prune(feed.items, maxAgeHours: 72, cap: 30)
+                return f
+            }
         } else {
             feeds = [
                 Feed(url: "https://www3.nhk.or.jp/rss/news/cat0.xml", nickname: "NHK"),
